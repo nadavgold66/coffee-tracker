@@ -385,8 +385,8 @@
                         
                         <div className="mt-2 flex items-center">
                             <div className="text-yellow-500">
-                                {'★'.repeat(Math.floor(averageRating))}
-                                {'☆'.repeat(5 - Math.floor(averageRating))}
+                                {'★'.repeat(Math.round(averageRating / 2))}
+                                {'☆'.repeat(5 - Math.round(averageRating / 2))}
                             </div>
                             <span className="ml-2 text-gray-600">{averageRating}/10</span>
                         </div>
@@ -567,6 +567,7 @@
                                                 ref={fileInputRef}
                                                 type="file"
                                                 accept="image/*"
+                                                capture="environment"
                                                 onChange={handleImageUpload}
                                                 className="hidden"
                                             />
@@ -574,10 +575,13 @@
                                                 type="button"
                                                 onClick={() => fileInputRef.current.click()}
                                                 disabled={uploading}
-                                                className="bg-gray-600 text-white px-4 py-2 rounded hover:bg-gray-700 transition"
+                                                className="bg-gray-600 text-white px-4 py-2 rounded hover:bg-gray-700 transition disabled:opacity-50"
                                             >
                                                 {uploading ? 'Uploading...' : 'Upload Photo'}
                                             </button>
+                                            <label className="text-sm text-gray-600 ml-2">
+                                                {/iPhone|iPad|Android/i.test(navigator.userAgent) ? 'Tap to use camera or gallery' : 'Choose file'}
+                                            </label>
                                         </div>
                                     </div>
                                 </div>
