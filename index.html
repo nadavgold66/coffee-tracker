@@ -478,18 +478,45 @@
 
             const handleImageUpload = async (e) => {
                 const file = e.target.files[0];
-                if (!file) return;
+                if (!file) {
+                    console.log("No file selected");
+                    return;
+                }
+
+                console.log("File selected:", file.name, "Size:", file.size, "Type:", file.type);
+                console.log("User ID:", user.uid);
+                console.log("Storage reference:", storage.ref().toString());
 
                 setUploading(true);
                 try {
+                    // Test if storage is initialized
+                    console.log("Creating storage reference...");
                     const storageRef = storage.ref();
-                    const fileRef = storageRef.child(`coffee-images/${user.uid}/${Date.now()}_${file.name}`);
-                    await fileRef.put(file);
+                    
+                    // Create file path
+                    const fileName = `coffee-images/${user.uid}/${Date.now()}_${file.name}`;
+                    console.log("Upload path:", fileName);
+                    
+                    // Create file reference
+                    const fileRef = storageRef.child(fileName);
+                    console.log("Starting upload...");
+                    
+                    // Upload file
+                    const uploadTask = await fileRef.put(file);
+                    console.log("Upload complete, getting download URL...");
+                    
+                    // Get download URL
                     const imageUrl = await fileRef.getDownloadURL();
+                    console.log("Download URL obtained:", imageUrl);
+                    
                     setFormData({ ...formData, imageUrl });
+                    alert("Image uploaded successfully!");
                 } catch (error) {
-                    console.error("Error uploading image:", error);
-                    alert(`Failed to upload image: ${error.message}`);
+                    console.error("Full error object:", error);
+                    console.error("Error code:", error.code);
+                    console.error("Error message:", error.message);
+                    console.error("Error details:", error.serverResponse);
+                    alert(`Failed to upload image: ${error.code} - ${error.message}`);
                 } finally {
                     setUploading(false);
                 }
