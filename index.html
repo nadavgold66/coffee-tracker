@@ -11,7 +11,6 @@
     <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-database-compat.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-storage-compat.js"></script>
     <style>
         .slider {
             -webkit-appearance: none;
@@ -52,7 +51,7 @@
             apiKey: "AIzaSyDMhpNWUEJKLQtLBMW4sxwUI9hNQPNKxyU",
             authDomain: "coffee-tracker-app-321aa.firebaseapp.com",
             projectId: "coffee-tracker-app-321aa",
-            storageBucket: "coffee-tracker-app-321aa.firebasestorage.app",
+            storageBucket: "coffee-tracker-app-321aa.appspot.com",
             messagingSenderId: "420921255039",
             appId: "1:420921255039:web:b10250998e91b1df5b8b4a"
         };
@@ -61,7 +60,6 @@
         firebase.initializeApp(firebaseConfig);
         const auth = firebase.auth();
         const database = firebase.database();
-        const storage = firebase.storage();
 
         const { useState, useEffect, useRef } = React;
 
@@ -486,46 +484,39 @@
 
             const handleImageUpload = async (e) => {
                 const file = e.target.files[0];
-                if (!file) {
-                    console.log("No file selected");
+                if (!file) return;
+
+                // Check file size (optional - to prevent huge base64 strings)
+                const maxSize = 5 * 1024 * 1024; // 5MB
+                if (file.size > maxSize) {
+                    alert('Image size should be less than 5MB');
                     return;
                 }
 
-                console.log("File selected:", file.name, "Size:", file.size, "Type:", file.type);
-                console.log("User ID:", user.uid);
-                console.log("Storage reference:", storage.ref().toString());
-
                 setUploading(true);
+                
                 try {
-                    // Test if storage is initialized
-                    console.log("Creating storage reference...");
-                    const storageRef = storage.ref();
+                    // Use FileReader to convert to base64 like the apartment tracker
+                    const reader = new FileReader();
                     
-                    // Create file path
-                    const fileName = `coffee-images/${user.uid}/${Date.now()}_${file.name}`;
-                    console.log("Upload path:", fileName);
+                    reader.onload = function(event) {
+                        const imageUrl = event.target.result;
+                        setFormData(prev => ({ ...prev, imageUrl }));
+                        setUploading(false);
+                        alert("Image added successfully!");
+                    };
                     
-                    // Create file reference
-                    const fileRef = storageRef.child(fileName);
-                    console.log("Starting upload...");
+                    reader.onerror = function(error) {
+                        console.error("Error reading file:", error);
+                        alert("Failed to read image file");
+                        setUploading(false);
+                    };
                     
-                    // Upload file
-                    const uploadTask = await fileRef.put(file);
-                    console.log("Upload complete, getting download URL...");
+                    reader.readAsDataURL(file);
                     
-                    // Get download URL
-                    const imageUrl = await fileRef.getDownloadURL();
-                    console.log("Download URL obtained:", imageUrl);
-                    
-                    setFormData({ ...formData, imageUrl });
-                    alert("Image uploaded successfully!");
                 } catch (error) {
-                    console.error("Full error object:", error);
-                    console.error("Error code:", error.code);
-                    console.error("Error message:", error.message);
-                    console.error("Error details:", error.serverResponse);
-                    alert(`Failed to upload image: ${error.code} - ${error.message}`);
-                } finally {
+                    console.error("Error handling image:", error);
+                    alert("Failed to process image");
                     setUploading(false);
                 }
             };
@@ -612,11 +603,11 @@
                                                 disabled={uploading}
                                                 className="bg-gray-600 text-white px-4 py-2 rounded hover:bg-gray-700 transition disabled:opacity-50"
                                             >
-                                                {uploading ? 'Uploading...' : 'Upload Photo'}
+                                                {uploading ? 'Processing...' : 'Upload Photo'}
                                             </button>
-                                            <label className="text-sm text-gray-600 ml-2">
+                                            <p className="text-sm text-gray-600 mt-1">
                                                 {/iPhone|iPad|Android/i.test(navigator.userAgent) ? 'Tap to use camera or gallery' : 'Choose file'}
-                                            </label>
+                                            </p>
                                         </div>
                                     </div>
                                 </div>
