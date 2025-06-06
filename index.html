@@ -489,7 +489,7 @@
                     setFormData({ ...formData, imageUrl });
                 } catch (error) {
                     console.error("Error uploading image:", error);
-                    alert("Failed to upload image");
+                    alert(`Failed to upload image: ${error.message}`);
                 } finally {
                     setUploading(false);
                 }
