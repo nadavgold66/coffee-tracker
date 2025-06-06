@@ -10,7 +10,7 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-firestore-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-database-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-storage-compat.js"></script>
     <style>
         .slider {
@@ -60,7 +60,7 @@
         // Initialize Firebase
         firebase.initializeApp(firebaseConfig);
         const auth = firebase.auth();
-        const db = firebase.firestore();
+        const database = firebase.database();
         const storage = firebase.storage();
 
         const { useState, useEffect, useRef } = React;
@@ -165,17 +165,25 @@
 
             useEffect(() => {
                 if (user) {
-                    const unsubscribe = db.collection('users').doc(user.uid)
-                        .collection('coffees')
-                        .orderBy('dateAdded', 'desc')
-                        .onSnapshot((snapshot) => {
-                            const coffeesData = snapshot.docs.map(doc => ({
-                                id: doc.id,
-                                ...doc.data()
+                    const coffeesRef = database.ref(`users/${user.uid}/coffees`);
+                    
+                    coffeesRef.on('value', (snapshot) => {
+                        const data = snapshot.val();
+                        if (data) {
+                            const coffeesData = Object.entries(data).map(([id, coffee]) => ({
+                                id,
+                                ...coffee
                             }));
+                            // Sort by dateAdded (newest first)
+                            coffeesData.sort((a, b) => (b.dateAdded || 0) - (a.dateAdded || 0));
                             setCoffees(coffeesData);
-                        });
-                    return unsubscribe;
+                        } else {
+                            setCoffees([]);
+                        }
+                    });
+
+                    // Cleanup listener on unmount
+                    return () => coffeesRef.off();
                 }
             }, [user]);
 
@@ -204,10 +212,10 @@
             const handleDelete = async (coffeeId) => {
                 if (window.confirm('Are you sure you want to delete this coffee?')) {
                     try {
-                        await db.collection('users').doc(user.uid)
-                            .collection('coffees').doc(coffeeId).delete();
+                        await database.ref(`users/${user.uid}/coffees/${coffeeId}`).remove();
                     } catch (error) {
                         console.error("Error deleting coffee:", error);
+                        alert("Failed to delete coffee");
                     }
                 }
             };
@@ -556,16 +564,16 @@
                     };
 
                     if (coffee) {
-                        await db.collection('users').doc(user.uid)
-                            .collection('coffees').doc(coffee.id).update(coffeeData);
+                        // Update existing coffee
+                        await database.ref(`users/${user.uid}/coffees/${coffee.id}`).set(coffeeData);
                     } else {
-                        await db.collection('users').doc(user.uid)
-                            .collection('coffees').add(coffeeData);
+                        // Add new coffee
+                        await database.ref(`users/${user.uid}/coffees`).push(coffeeData);
                     }
                     onClose();
                 } catch (error) {
                     console.error("Error saving coffee:", error);
-                    alert("Failed to save coffee");
+                    alert("Failed to save coffee: " + error.message);
                 }
             };
 
