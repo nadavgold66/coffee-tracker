@@ -11,6 +11,7 @@
     <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-auth-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-database-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-storage-compat.js"></script>
     <style>
         .slider {
             -webkit-appearance: none;
@@ -51,7 +52,7 @@
             apiKey: "AIzaSyDMhpNWUEJKLQtLBMW4sxwUI9hNQPNKxyU",
             authDomain: "coffee-tracker-app-321aa.firebaseapp.com",
             projectId: "coffee-tracker-app-321aa",
-            storageBucket: "coffee-tracker-app-321aa.appspot.com",
+            storageBucket: "coffee-tracker-app-321aa.firebasestorage.app",
             messagingSenderId: "420921255039",
             appId: "1:420921255039:web:b10250998e91b1df5b8b4a"
         };
@@ -60,8 +61,9 @@
         firebase.initializeApp(firebaseConfig);
         const auth = firebase.auth();
         const database = firebase.database();
+        const storage = firebase.storage();
 
-        const { useState, useEffect, useRef, useCallback } = React;
+        const { useState, useEffect, useRef } = React;
 
         // Rating categories
         const RATING_CATEGORIES = [
@@ -87,7 +89,7 @@
                     onAuthStateChanged(user);
                 });
                 return unsubscribe;
-            }, [onAuthStateChanged]);
+            }, []);
 
             const signInWithGoogle = async () => {
                 const provider = new firebase.auth.GoogleAuthProvider();
@@ -95,7 +97,6 @@
                     await auth.signInWithPopup(provider);
                 } catch (error) {
                     console.error("Error signing in:", error);
-                    alert("Error signing in: " + error.message);
                 }
             };
 
@@ -138,9 +139,7 @@
                         <h1 className="text-2xl font-bold">☕ Coffee Tracker Pro</h1>
                         <div className="flex items-center space-x-4">
                             <span className="text-sm">{user.displayName}</span>
-                            {user.photoURL && (
-                                <img src={user.photoURL} alt="Profile" className="w-8 h-8 rounded-full" />
-                            )}
+                            <img src={user.photoURL} alt="Profile" className="w-8 h-8 rounded-full" />
                             <button
                                 onClick={signOut}
                                 className="bg-amber-700 px-4 py-2 rounded hover:bg-amber-800 transition"
@@ -156,9 +155,7 @@
         // Main App Component
         function CoffeeTrackerApp() {
             const [user, setUser] = useState(null);
-            const [currentView, setCurrentView] = useState('my-coffees');
             const [coffees, setCoffees] = useState([]);
-            const [communityData, setCommunityData] = useState({ coffees: [], users: {} });
             const [showAddForm, setShowAddForm] = useState(false);
             const [editingCoffee, setEditingCoffee] = useState(null);
             const [compareMode, setCompareMode] = useState(false);
@@ -168,114 +165,48 @@
 
             useEffect(() => {
                 if (user) {
-                    // Load user's coffees
                     const coffeesRef = database.ref(`users/${user.uid}/coffees`);
                     
-                    const handleData = (snapshot) => {
-                        try {
-                            const data = snapshot.val();
-                            if (data) {
-                                const coffeesData = Object.entries(data).map(([id, coffee]) => ({
-                                    id,
-                                    ...coffee
-                                }));
-                                coffeesData.sort((a, b) => (b.dateAdded || 0) - (a.dateAdded || 0));
-                                setCoffees(coffeesData);
-                            } else {
-                                setCoffees([]);
-                            }
-                        } catch (error) {
-                            console.error("Error processing coffee data:", error);
+                    coffeesRef.on('value', (snapshot) => {
+                        const data = snapshot.val();
+                        if (data) {
+                            const coffeesData = Object.entries(data).map(([id, coffee]) => ({
+                                id,
+                                ...coffee
+                            }));
+                            // Sort by dateAdded (newest first)
+                            coffeesData.sort((a, b) => (b.dateAdded || 0) - (a.dateAdded || 0));
+                            setCoffees(coffeesData);
+                        } else {
+                            setCoffees([]);
                         }
-                    };
+                    });
 
-                    coffeesRef.on('value', handleData);
-                    return () => coffeesRef.off('value', handleData);
+                    // Cleanup listener on unmount
+                    return () => coffeesRef.off();
                 }
             }, [user]);
 
-            useEffect(() => {
-                // Load community data
-                if (currentView === 'community' && user) {
-                    const loadCommunityData = async () => {
-                        try {
-                            // Get all users' data
-                            const usersSnapshot = await database.ref('users').once('value');
-                            const usersData = usersSnapshot.val() || {};
-                            
-                            const userNames = {};
-                            const allPublicCoffees = [];
-                            
-                            // Process each user's data
-                            Object.entries(usersData).forEach(([uid, userData]) => {
-                                // Store user name
-                                if (userData && userData.profile) {
-                                    userNames[uid] = userData.profile.displayName || 'Anonymous';
-                                }
-                                
-                                // Get public coffees
-                                if (userData && userData.coffees) {
-                                    Object.entries(userData.coffees).forEach(([coffeeId, coffee]) => {
-                                        if (coffee && coffee.isPrivate !== true) {
-                                            allPublicCoffees.push({
-                                                id: coffeeId,
-                                                ...coffee,
-                                                ownerId: uid,
-                                                ownerName: userNames[uid] || 'Anonymous'
-                                            });
-                                        }
-                                    });
-                                }
-                            });
-
-                            setCommunityData({
-                                coffees: allPublicCoffees,
-                                users: userNames
-                            });
-                        } catch (error) {
-                            console.error("Error loading community data:", error);
-                        }
-                    };
-
-                    loadCommunityData();
-
-                    // Set up listener for changes
-                    const usersRef = database.ref('users');
-                    usersRef.on('value', loadCommunityData);
-
-                    return () => usersRef.off('value', loadCommunityData);
-                }
-            }, [currentView, user]);
-
-            const handleAuthStateChanged = async (user) => {
+            const handleAuthStateChanged = (user) => {
                 setUser(user);
-                if (user) {
-                    try {
-                        // Save user profile
-                        await database.ref(`users/${user.uid}/profile`).set({
-                            displayName: user.displayName,
-                            email: user.email,
-                            photoURL: user.photoURL,
-                            lastLogin: Date.now()
-                        });
-                    } catch (error) {
-                        console.error("Error saving user profile:", error);
-                    }
-                }
             };
 
-            const calculateBestTasteRating = (coffee) => {
-                let bestTaste = 0;
+            const calculateAverageRating = (coffee) => {
+                let totalRating = 0;
+                let totalCount = 0;
 
-                if (coffee && coffee.brewMethods) {
+                if (coffee.brewMethods) {
                     Object.values(coffee.brewMethods).forEach(method => {
-                        if (method && method.taste && method.taste > bestTaste) {
-                            bestTaste = method.taste;
-                        }
+                        RATING_CATEGORIES.forEach(category => {
+                            if (method[category]) {
+                                totalRating += method[category];
+                                totalCount++;
+                            }
+                        });
                     });
                 }
 
-                return bestTaste;
+                return totalCount > 0 ? (totalRating / totalCount).toFixed(1) : 0;
             };
 
             const handleDelete = async (coffeeId) => {
@@ -297,12 +228,12 @@
                 .sort((a, b) => {
                     switch (sortBy) {
                         case 'rating':
-                            return calculateBestTasteRating(b) - calculateBestTasteRating(a);
+                            return calculateAverageRating(b) - calculateAverageRating(a);
                         case 'name':
-                            return (a.name || '').localeCompare(b.name || '');
+                            return a.name.localeCompare(b.name);
                         case 'dateAdded':
                         default:
-                            return (b.dateAdded || 0) - (a.dateAdded || 0);
+                            return b.dateAdded - a.dateAdded;
                     }
                 });
 
@@ -312,130 +243,94 @@
                     
                     {user && (
                         <div className="max-w-7xl mx-auto p-4">
-                            {/* Navigation Tabs */}
-                            <div className="bg-white rounded-lg shadow-md p-2 mb-6">
-                                <div className="flex gap-2">
-                                    <button
-                                        onClick={() => setCurrentView('my-coffees')}
-                                        className={`px-4 py-2 rounded transition ${
-                                            currentView === 'my-coffees'
-                                                ? 'bg-amber-600 text-white'
-                                                : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
-                                        }`}
-                                    >
-                                        My Coffees
-                                    </button>
-                                    <button
-                                        onClick={() => setCurrentView('community')}
-                                        className={`px-4 py-2 rounded transition ${
-                                            currentView === 'community'
-                                                ? 'bg-amber-600 text-white'
-                                                : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
-                                        }`}
-                                    >
-                                        Community
-                                    </button>
+                            {/* Action Bar */}
+                            <div className="bg-white rounded-lg shadow-md p-4 mb-6">
+                                <div className="flex flex-wrap gap-4 justify-between items-center">
+                                    <div className="flex gap-2">
+                                        <button
+                                            onClick={() => setShowAddForm(true)}
+                                            className="bg-amber-600 text-white px-4 py-2 rounded hover:bg-amber-700 transition"
+                                        >
+                                            + Add Coffee
+                                        </button>
+                                        <button
+                                            onClick={() => {
+                                                setCompareMode(!compareMode);
+                                                setSelectedForCompare([]);
+                                            }}
+                                            className={`px-4 py-2 rounded transition ${
+                                                compareMode 
+                                                    ? 'bg-red-600 text-white hover:bg-red-700' 
+                                                    : 'bg-gray-600 text-white hover:bg-gray-700'
+                                            }`}
+                                        >
+                                            {compareMode ? 'Cancel Compare' : 'Compare'}
+                                        </button>
+                                    </div>
+                                    
+                                    <div className="flex gap-2">
+                                        <select
+                                            value={filterMethod}
+                                            onChange={(e) => setFilterMethod(e.target.value)}
+                                            className="border rounded px-3 py-2"
+                                        >
+                                            <option value="all">All Methods</option>
+                                            {BREW_METHODS.map(method => (
+                                                <option key={method} value={method}>{method}</option>
+                                            ))}
+                                        </select>
+                                        
+                                        <select
+                                            value={sortBy}
+                                            onChange={(e) => setSortBy(e.target.value)}
+                                            className="border rounded px-3 py-2"
+                                        >
+                                            <option value="dateAdded">Date Added</option>
+                                            <option value="rating">Rating</option>
+                                            <option value="name">Name</option>
+                                        </select>
+                                    </div>
                                 </div>
                             </div>
 
-                            {currentView === 'my-coffees' ? (
-                                <>
-                                    {/* Action Bar */}
-                                    <div className="bg-white rounded-lg shadow-md p-4 mb-6">
-                                        <div className="flex flex-wrap gap-4 justify-between items-center">
-                                            <div className="flex gap-2">
-                                                <button
-                                                    onClick={() => setShowAddForm(true)}
-                                                    className="bg-amber-600 text-white px-4 py-2 rounded hover:bg-amber-700 transition"
-                                                >
-                                                    + Add Coffee
-                                                </button>
-                                                <button
-                                                    onClick={() => {
-                                                        setCompareMode(!compareMode);
-                                                        setSelectedForCompare([]);
-                                                    }}
-                                                    className={`px-4 py-2 rounded transition ${
-                                                        compareMode 
-                                                            ? 'bg-red-600 text-white hover:bg-red-700' 
-                                                            : 'bg-gray-600 text-white hover:bg-gray-700'
-                                                    }`}
-                                                >
-                                                    {compareMode ? 'Cancel Compare' : 'Compare'}
-                                                </button>
-                                            </div>
-                                            
-                                            <div className="flex gap-2">
-                                                <select
-                                                    value={filterMethod}
-                                                    onChange={(e) => setFilterMethod(e.target.value)}
-                                                    className="border rounded px-3 py-2"
-                                                >
-                                                    <option value="all">All Methods</option>
-                                                    {BREW_METHODS.map(method => (
-                                                        <option key={method} value={method}>{method}</option>
-                                                    ))}
-                                                </select>
-                                                
-                                                <select
-                                                    value={sortBy}
-                                                    onChange={(e) => setSortBy(e.target.value)}
-                                                    className="border rounded px-3 py-2"
-                                                >
-                                                    <option value="dateAdded">Date Added</option>
-                                                    <option value="rating">Rating</option>
-                                                    <option value="name">Name</option>
-                                                </select>
-                                            </div>
-                                        </div>
-                                    </div>
-
-                                    {/* Compare Mode */}
-                                    {compareMode && selectedForCompare.length === 2 && (
-                                        <CompareView 
-                                            coffee1={coffees.find(c => c.id === selectedForCompare[0])}
-                                            coffee2={coffees.find(c => c.id === selectedForCompare[1])}
-                                            onClose={() => {
-                                                setCompareMode(false);
-                                                setSelectedForCompare([]);
-                                            }}
-                                        />
-                                    )}
-
-                                    {/* Coffee Grid */}
-                                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                                        {filteredAndSortedCoffees.map(coffee => (
-                                            <CoffeeCard
-                                                key={coffee.id}
-                                                coffee={coffee}
-                                                onEdit={() => setEditingCoffee(coffee)}
-                                                onDelete={() => handleDelete(coffee.id)}
-                                                compareMode={compareMode}
-                                                isSelected={selectedForCompare.includes(coffee.id)}
-                                                onToggleSelect={(id) => {
-                                                    if (selectedForCompare.includes(id)) {
-                                                        setSelectedForCompare(selectedForCompare.filter(i => i !== id));
-                                                    } else if (selectedForCompare.length < 2) {
-                                                        setSelectedForCompare([...selectedForCompare, id]);
-                                                    }
-                                                }}
-                                                averageRating={calculateBestTasteRating(coffee)}
-                                            />
-                                        ))}
-                                    </div>
-
-                                    {coffees.length === 0 && (
-                                        <div className="text-center py-12">
-                                            <p className="text-gray-500 text-lg">No coffees added yet. Add your first coffee!</p>
-                                        </div>
-                                    )}
-                                </>
-                            ) : (
-                                <CommunityView 
-                                    user={user}
-                                    communityData={communityData}
-                                    calculateBestTasteRating={calculateBestTasteRating}
+                            {/* Compare Mode */}
+                            {compareMode && selectedForCompare.length === 2 && (
+                                <CompareView 
+                                    coffee1={coffees.find(c => c.id === selectedForCompare[0])}
+                                    coffee2={coffees.find(c => c.id === selectedForCompare[1])}
+                                    onClose={() => {
+                                        setCompareMode(false);
+                                        setSelectedForCompare([]);
+                                    }}
                                 />
+                            )}
+
+                            {/* Coffee Grid */}
+                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                                {filteredAndSortedCoffees.map(coffee => (
+                                    <CoffeeCard
+                                        key={coffee.id}
+                                        coffee={coffee}
+                                        onEdit={() => setEditingCoffee(coffee)}
+                                        onDelete={() => handleDelete(coffee.id)}
+                                        compareMode={compareMode}
+                                        isSelected={selectedForCompare.includes(coffee.id)}
+                                        onToggleSelect={(id) => {
+                                            if (selectedForCompare.includes(id)) {
+                                                setSelectedForCompare(selectedForCompare.filter(i => i !== id));
+                                            } else if (selectedForCompare.length < 2) {
+                                                setSelectedForCompare([...selectedForCompare, id]);
+                                            }
+                                        }}
+                                        averageRating={calculateAverageRating(coffee)}
+                                    />
+                                ))}
+                            </div>
+
+                            {coffees.length === 0 && (
+                                <div className="text-center py-12">
+                                    <p className="text-gray-500 text-lg">No coffees added yet. Add your first coffee!</p>
+                                </div>
                             )}
 
                             {/* Add/Edit Form Modal */}
@@ -455,7 +350,7 @@
             );
         }
 
-        // Coffee Card Component (for My Coffees view)
+        // Coffee Card Component
         function CoffeeCard({ coffee, onEdit, onDelete, compareMode, isSelected, onToggleSelect, averageRating }) {
             const [expandedMethod, setExpandedMethod] = useState(null);
 
@@ -503,27 +398,6 @@
                             </div>
                             <span className="ml-2 text-gray-600">{averageRating}/10</span>
                         </div>
-
-                        {/* Price Display */}
-                        {(coffee.pricePerKg || coffee.pricePerCup) && (
-                            <div className="mt-2 text-sm text-gray-600">
-                                {coffee.priceType === 'cup' && coffee.pricePerCup && (
-                                    <p>Price per cup: {coffee.pricePerCup}</p>
-                                )}
-                                {coffee.priceType === 'kg' && coffee.pricePerKg && (
-                                    <p>Price per kg: {coffee.pricePerKg}</p>
-                                )}
-                            </div>
-                        )}
-
-                        {/* Privacy Status */}
-                        <div className="mt-2">
-                            <span className={`text-xs px-2 py-1 rounded ${
-                                coffee.isPrivate ? 'bg-gray-200 text-gray-600' : 'bg-green-100 text-green-600'
-                            }`}>
-                                {coffee.isPrivate ? '🔒 Private' : '🌍 Public'}
-                            </span>
-                        </div>
                         
                         {coffee.brewMethods && (
                             <div className="mt-3">
@@ -546,11 +420,6 @@
                                                         <span>{ratings[cat] || 0}/10</span>
                                                     </div>
                                                 ))}
-                                                {ratings.notes && (
-                                                    <div className="mt-2 pt-2 border-t">
-                                                        <p className="text-xs text-gray-600">{ratings.notes}</p>
-                                                    </div>
-                                                )}
                                             </div>
                                         )}
                                     </div>
@@ -587,142 +456,500 @@
             );
         }
 
-        // Community View Component
-        function CommunityView({ user, communityData, calculateBestTasteRating }) {
-            const [searchTerm, setSearchTerm] = useState('');
-            const [filterUser, setFilterUser] = useState('all');
-            const [filterMethod, setFilterMethod] = useState('all');
-            const [sortBy, setSortBy] = useState('newest');
-            const [displayedCoffees, setDisplayedCoffees] = useState([]);
-            const [hasMore, setHasMore] = useState(true);
-            const [page, setPage] = useState(0);
-            const observerRef = useRef();
-            const ITEMS_PER_PAGE = 10;
+        // Coffee Form Component
+        function CoffeeForm({ user, coffee, onClose }) {
+            const [formData, setFormData] = useState({
+                name: '',
+                brand: '',
+                origin: '',
+                roastLevel: 'Medium',
+                roastingDate: '',
+                grindingLevel: '',
+                price: '',
+                orderLink: '',
+                notes: '',
+                imageUrl: '',
+                brewMethods: {},
+                ...coffee
+            });
+            const [currentMethod, setCurrentMethod] = useState('French Press');
+            const [currentRatings, setCurrentRatings] = useState({
+                taste: 5,
+                aroma: 5,
+                acidity: 5,
+                body: 5,
+                aftertaste: 5,
+                strength: 5
+            });
+            const [uploading, setUploading] = useState(false);
+            const fileInputRef = useRef(null);
 
-            // Filter and sort coffees
-            const filteredCoffees = communityData.coffees
-                .filter(coffee => {
-                    if (searchTerm && !coffee.name.toLowerCase().includes(searchTerm.toLowerCase()) && 
-                        !coffee.brand.toLowerCase().includes(searchTerm.toLowerCase())) {
-                        return false;
-                    }
-                    if (filterUser !== 'all' && coffee.ownerId !== filterUser) {
-                        return false;
-                    }
-                    if (filterMethod !== 'all' && (!coffee.brewMethods || !coffee.brewMethods[filterMethod])) {
-                        return false;
-                    }
-                    return true;
-                })
-                .sort((a, b) => {
-                    switch (sortBy) {
-                        case 'mostLiked':
-                            return (Object.keys(b.likes || {}).length) - (Object.keys(a.likes || {}).length);
-                        case 'highestRated':
-                            return calculateBestTasteRating(b) - calculateBestTasteRating(a);
-                        case 'newest':
-                        default:
-                            return (b.dateAdded || 0) - (a.dateAdded || 0);
-                    }
-                });
+            const handleImageUpload = async (e) => {
+                const file = e.target.files[0];
+                if (!file) {
+                    console.log("No file selected");
+                    return;
+                }
 
-            // Infinite scroll setup
-            useEffect(() => {
-                setDisplayedCoffees(filteredCoffees.slice(0, ITEMS_PER_PAGE));
-                setPage(1);
-                setHasMore(filteredCoffees.length > ITEMS_PER_PAGE);
-            }, [searchTerm, filterUser, filterMethod, sortBy, communityData]);
+                console.log("File selected:", file.name, "Size:", file.size, "Type:", file.type);
+                console.log("User ID:", user.uid);
+                console.log("Storage reference:", storage.ref().toString());
 
-            const lastCoffeeElementRef = useCallback(node => {
-                if (observerRef.current) observerRef.current.disconnect();
-                observerRef.current = new IntersectionObserver(entries => {
-                    if (entries[0].isIntersecting && hasMore) {
-                        const newItems = filteredCoffees.slice(
-                            page * ITEMS_PER_PAGE,
-                            (page + 1) * ITEMS_PER_PAGE
-                        );
-                        setDisplayedCoffees(prev => [...prev, ...newItems]);
-                        setPage(prev => prev + 1);
-                        setHasMore(filteredCoffees.length > (page + 1) * ITEMS_PER_PAGE);
+                setUploading(true);
+                try {
+                    // Test if storage is initialized
+                    console.log("Creating storage reference...");
+                    const storageRef = storage.ref();
+                    
+                    // Create file path
+                    const fileName = `coffee-images/${user.uid}/${Date.now()}_${file.name}`;
+                    console.log("Upload path:", fileName);
+                    
+                    // Create file reference
+                    const fileRef = storageRef.child(fileName);
+                    console.log("Starting upload...");
+                    
+                    // Upload file
+                    const uploadTask = await fileRef.put(file);
+                    console.log("Upload complete, getting download URL...");
+                    
+                    // Get download URL
+                    const imageUrl = await fileRef.getDownloadURL();
+                    console.log("Download URL obtained:", imageUrl);
+                    
+                    setFormData({ ...formData, imageUrl });
+                    alert("Image uploaded successfully!");
+                } catch (error) {
+                    console.error("Full error object:", error);
+                    console.error("Error code:", error.code);
+                    console.error("Error message:", error.message);
+                    console.error("Error details:", error.serverResponse);
+                    alert(`Failed to upload image: ${error.code} - ${error.message}`);
+                } finally {
+                    setUploading(false);
+                }
+            };
+
+            const handleAddBrewMethod = () => {
+                if (!formData.brewMethods[currentMethod]) {
+                    setFormData({
+                        ...formData,
+                        brewMethods: {
+                            ...formData.brewMethods,
+                            [currentMethod]: currentRatings
+                        }
+                    });
+                }
+            };
+
+            const handleRemoveBrewMethod = (method) => {
+                const newMethods = { ...formData.brewMethods };
+                delete newMethods[method];
+                setFormData({ ...formData, brewMethods: newMethods });
+            };
+
+            const handleSubmit = async (e) => {
+                e.preventDefault();
+                
+                if (!formData.name || !formData.brand) {
+                    alert('Please fill in at least the coffee name and brand');
+                    return;
+                }
+
+                try {
+                    const coffeeData = {
+                        ...formData,
+                        dateAdded: coffee ? formData.dateAdded : Date.now(),
+                        lastModified: Date.now()
+                    };
+
+                    if (coffee) {
+                        // Update existing coffee
+                        await database.ref(`users/${user.uid}/coffees/${coffee.id}`).set(coffeeData);
+                    } else {
+                        // Add new coffee
+                        await database.ref(`users/${user.uid}/coffees`).push(coffeeData);
                     }
-                });
-                if (node) observerRef.current.observe(node);
-            }, [hasMore, page, filteredCoffees]);
-
-            // Get unique users for filter
-            const uniqueUsers = [...new Set(communityData.coffees.map(c => c.ownerId))];
+                    onClose();
+                } catch (error) {
+                    console.error("Error saving coffee:", error);
+                    alert("Failed to save coffee: " + error.message);
+                }
+            };
 
             return (
-                <div>
-                    {/* Filters and Search */}
-                    <div className="bg-white rounded-lg shadow-md p-4 mb-6">
-                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-                            <input
-                                type="text"
-                                placeholder="Search coffees..."
-                                value={searchTerm}
-                                onChange={(e) => setSearchTerm(e.target.value)}
-                                className="border rounded px-3 py-2"
-                            />
+                <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50 overflow-y-auto">
+                    <div className="bg-white rounded-lg shadow-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+                        <div className="p-6">
+                            <h2 className="text-2xl font-bold mb-4">
+                                {coffee ? 'Edit Coffee' : 'Add New Coffee'}
+                            </h2>
                             
-                            <select
-                                value={filterUser}
-                                onChange={(e) => setFilterUser(e.target.value)}
-                                className="border rounded px-3 py-2"
-                            >
-                                <option value="all">All Users</option>
-                                {uniqueUsers.map(uid => (
-                                    <option key={uid} value={uid}>
-                                        {communityData.users[uid] || 'Anonymous'}
-                                    </option>
-                                ))}
-                            </select>
-                            
-                            <select
-                                value={filterMethod}
-                                onChange={(e) => setFilterMethod(e.target.value)}
-                                className="border rounded px-3 py-2"
-                            >
-                                <option value="all">All Methods</option>
-                                {BREW_METHODS.map(method => (
-                                    <option key={method} value={method}>{method}</option>
-                                ))}
-                            </select>
-                            
-                            <select
-                                value={sortBy}
-                                onChange={(e) => setSortBy(e.target.value)}
-                                className="border rounded px-3 py-2"
-                            >
-                                <option value="newest">Newest</option>
-                                <option value="mostLiked">Most Liked</option>
-                                <option value="highestRated">Highest Rated</option>
-                            </select>
+                            <form onSubmit={handleSubmit}>
+                                {/* Image Upload */}
+                                <div className="mb-4">
+                                    <label className="block text-sm font-medium mb-2">Coffee Photo</label>
+                                    <div className="flex items-center gap-4">
+                                        {formData.imageUrl && (
+                                            <img 
+                                                src={formData.imageUrl} 
+                                                alt="Coffee" 
+                                                className="w-32 h-32 object-cover rounded"
+                                            />
+                                        )}
+                                        <div>
+                                            <input
+                                                ref={fileInputRef}
+                                                type="file"
+                                                accept="image/*"
+                                                capture="environment"
+                                                onChange={handleImageUpload}
+                                                className="hidden"
+                                            />
+                                            <button
+                                                type="button"
+                                                onClick={() => fileInputRef.current.click()}
+                                                disabled={uploading}
+                                                className="bg-gray-600 text-white px-4 py-2 rounded hover:bg-gray-700 transition disabled:opacity-50"
+                                            >
+                                                {uploading ? 'Uploading...' : 'Upload Photo'}
+                                            </button>
+                                            <label className="text-sm text-gray-600 ml-2">
+                                                {/iPhone|iPad|Android/i.test(navigator.userAgent) ? 'Tap to use camera or gallery' : 'Choose file'}
+                                            </label>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                {/* Basic Info */}
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+                                    <div>
+                                        <label className="block text-sm font-medium mb-1">Name *</label>
+                                        <input
+                                            type="text"
+                                            value={formData.name}
+                                            onChange={(e) => setFormData({...formData, name: e.target.value})}
+                                            className="w-full border rounded px-3 py-2"
+                                            required
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="block text-sm font-medium mb-1">Brand *</label>
+                                        <input
+                                            type="text"
+                                            value={formData.brand}
+                                            onChange={(e) => setFormData({...formData, brand: e.target.value})}
+                                            className="w-full border rounded px-3 py-2"
+                                            required
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="block text-sm font-medium mb-1">Origin</label>
+                                        <input
+                                            type="text"
+                                            value={formData.origin}
+                                            onChange={(e) => setFormData({...formData, origin: e.target.value})}
+                                            className="w-full border rounded px-3 py-2"
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="block text-sm font-medium mb-1">Roast Level</label>
+                                        <select
+                                            value={formData.roastLevel}
+                                            onChange={(e) => setFormData({...formData, roastLevel: e.target.value})}
+                                            className="w-full border rounded px-3 py-2"
+                                        >
+                                            {ROAST_LEVELS.map(level => (
+                                                <option key={level} value={level}>{level}</option>
+                                            ))}
+                                        </select>
+                                    </div>
+                                    <div>
+                                        <label className="block text-sm font-medium mb-1">Roasting Date</label>
+                                        <input
+                                            type="date"
+                                            value={formData.roastingDate}
+                                            onChange={(e) => setFormData({...formData, roastingDate: e.target.value})}
+                                            className="w-full border rounded px-3 py-2"
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="block text-sm font-medium mb-1">Grinding Level</label>
+                                        <input
+                                            type="number"
+                                            value={formData.grindingLevel}
+                                            onChange={(e) => setFormData({...formData, grindingLevel: e.target.value})}
+                                            className="w-full border rounded px-3 py-2"
+                                            placeholder="Enter grinding level"
+                                            step="0.1"
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="block text-sm font-medium mb-1">Price</label>
+                                        <input
+                                            type="text"
+                                            value={formData.price}
+                                            onChange={(e) => setFormData({...formData, price: e.target.value})}
+                                            className="w-full border rounded px-3 py-2"
+                                            placeholder="e.g., $15.99"
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="block text-sm font-medium mb-1">Order Link</label>
+                                        <input
+                                            type="url"
+                                            value={formData.orderLink}
+                                            onChange={(e) => setFormData({...formData, orderLink: e.target.value})}
+                                            className="w-full border rounded px-3 py-2"
+                                            placeholder="https://..."
+                                        />
+                                    </div>
+                                </div>
+
+                                {/* Notes */}
+                                <div className="mb-4">
+                                    <label className="block text-sm font-medium mb-1">Tasting Notes</label>
+                                    <textarea
+                                        value={formData.notes}
+                                        onChange={(e) => setFormData({...formData, notes: e.target.value})}
+                                        className="w-full border rounded px-3 py-2"
+                                        rows="3"
+                                        placeholder="Describe the flavor profile..."
+                                    />
+                                </div>
+
+                                {/* Brew Methods */}
+                                <div className="mb-4">
+                                    <h3 className="text-lg font-semibold mb-2">Brew Methods & Ratings</h3>
+                                    
+                                    {/* Existing methods */}
+                                    {Object.entries(formData.brewMethods).map(([method, ratings]) => (
+                                        <div key={method} className="bg-gray-50 p-3 rounded mb-2">
+                                            <div className="flex justify-between items-center mb-2">
+                                                <span className="font-medium">{method}</span>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => handleRemoveBrewMethod(method)}
+                                                    className="text-red-600 hover:text-red-800"
+                                                >
+                                                    Remove
+                                                </button>
+                                            </div>
+                                            <div className="grid grid-cols-2 gap-2 text-sm">
+                                                {RATING_CATEGORIES.map(cat => (
+                                                    <div key={cat}>
+                                                        <span className="capitalize">{cat}: </span>
+                                                        <span className="font-medium">{ratings[cat]}/10</span>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    ))}
+                                    
+                                    {/* Add new method */}
+                                    <div className="bg-amber-50 p-4 rounded">
+                                        <div className="mb-3">
+                                            <label className="block text-sm font-medium mb-1">Add Brew Method</label>
+                                            <select
+                                                value={currentMethod}
+                                                onChange={(e) => setCurrentMethod(e.target.value)}
+                                                className="w-full border rounded px-3 py-2"
+                                            >
+                                                {BREW_METHODS.map(method => (
+                                                    <option key={method} value={method}>{method}</option>
+                                                ))}
+                                            </select>
+                                        </div>
+                                        
+                                        {/* Rating sliders */}
+                                        {RATING_CATEGORIES.map(category => (
+                                            <div key={category} className="mb-3">
+                                                <div className="flex justify-between items-center mb-1">
+                                                    <label className="text-sm font-medium capitalize">{category}</label>
+                                                    <span className="text-sm font-bold">{currentRatings[category]}/10</span>
+                                                </div>
+                                                <input
+                                                    type="range"
+                                                    min="1"
+                                                    max="10"
+                                                    value={currentRatings[category]}
+                                                    onChange={(e) => setCurrentRatings({
+                                                        ...currentRatings,
+                                                        [category]: parseInt(e.target.value)
+                                                    })}
+                                                    className="slider w-full"
+                                                />
+                                            </div>
+                                        ))}
+                                        
+                                        <button
+                                            type="button"
+                                            onClick={handleAddBrewMethod}
+                                            className="w-full bg-amber-600 text-white py-2 rounded hover:bg-amber-700 transition"
+                                        >
+                                            Add {currentMethod} Method
+                                        </button>
+                                    </div>
+                                </div>
+
+                                {/* Form Actions */}
+                                <div className="flex gap-2">
+                                    <button
+                                        type="submit"
+                                        className="flex-1 bg-green-600 text-white py-2 px-4 rounded hover:bg-green-700 transition"
+                                    >
+                                        {coffee ? 'Update Coffee' : 'Save Coffee'}
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={onClose}
+                                        className="flex-1 bg-gray-600 text-white py-2 px-4 rounded hover:bg-gray-700 transition"
+                                    >
+                                        Cancel
+                                    </button>
+                                </div>
+                            </form>
                         </div>
                     </div>
-
-                    {/* Coffee Posts */}
-                    <div className="space-y-6">
-                        {displayedCoffees.map((coffee, index) => (
-                            <CommunityPost
-                                key={coffee.id}
-                                ref={index === displayedCoffees.length - 1 ? lastCoffeeElementRef : null}
-                                coffee={coffee}
-                                currentUser={user}
-                                averageRating={calculateBestTasteRating(coffee)}
-                            />
-                        ))}
-                    </div>
-
-                    {displayedCoffees.length === 0 && (
-                        <div className="text-center py-12">
-                            <p className="text-gray-500 text-lg">No public coffees found</p>
-                        </div>
-                    )}
-
-                    {!hasMore && displayedCoffees.length > 0 && (
-                        <div className="text-center py-8">
-                            <p className="text-gray-500">You've reached the end!</p>
-                        </div>
-                    )}
                 </div>
+            );
+        }
+
+        // Compare View Component
+        function CompareView({ coffee1, coffee2, onClose }) {
+            const [selectedMethod, setSelectedMethod] = useState('French Press');
+
+            const getMethodRatings = (coffee, method) => {
+                return coffee.brewMethods && coffee.brewMethods[method] 
+                    ? coffee.brewMethods[method] 
+                    : null;
+            };
+
+            const availableMethods = [...new Set([
+                ...Object.keys(coffee1.brewMethods || {}),
+                ...Object.keys(coffee2.brewMethods || {})
+            ])];
+
+            return (
+                <div className="bg-white rounded-lg shadow-lg p-6 mb-6">
+                    <div className="flex justify-between items-center mb-4">
+                        <h2 className="text-2xl font-bold">Coffee Comparison</h2>
+                        <button
+                            onClick={onClose}
+                            className="text-gray-500 hover:text-gray-700"
+                        >
+                            ✕
+                        </button>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        {/* Coffee 1 */}
+                        <div className="text-center">
+                            <img 
+                                src={coffee1.imageUrl || 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjAwIiBoZWlnaHQ9IjIwMCIgdmlld0JveD0iMCAwIDIwMCAyMDAiIGZpbGw9Im5vbmUiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+CjxyZWN0IHdpZHRoPSIyMDAiIGhlaWdodD0iMjAwIiBmaWxsPSIjRTVFN0VCIi8+Cjx0ZXh0IHg9IjEwMCIgeT0iMTAwIiBmb250LWZhbWlseT0iQXJpYWwiIGZvbnQtc2l6ZT0iNjAiIGZpbGw9IiM5Q0EzQUYiIHRleHQtYW5jaG9yPSJtaWRkbGUiIGRvbWluYW50LWJhc2VsaW5lPSJtaWRkbGUiPuKYlTwvdGV4dD4KPC9zdmc+'} 
+                                alt={coffee1.name}
+                                className="w-32 h-32 object-cover rounded-lg mx-auto mb-3"
+                            />
+                            <h3 className="text-lg font-semibold">{coffee1.name}</h3>
+                            <p className="text-gray-600">{coffee1.brand}</p>
+                            <p className="text-sm text-gray-500">{coffee1.origin}</p>
+                        </div>
+
+                        {/* Coffee 2 */}
+                        <div className="text-center">
+                            <img 
+                                src={coffee2.imageUrl || 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjAwIiBoZWlnaHQ9IjIwMCIgdmlld0JveD0iMCAwIDIwMCAyMDAiIGZpbGw9Im5vbmUiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+CjxyZWN0IHdpZHRoPSIyMDAiIGhlaWdodD0iMjAwIiBmaWxsPSIjRTVFN0VCIi8+Cjx0ZXh0IHg9IjEwMCIgeT0iMTAwIiBmb250LWZhbWlseT0iQXJpYWwiIGZvbnQtc2l6ZT0iNjAiIGZpbGw9IiM5Q0EzQUYiIHRleHQtYW5jaG9yPSJtaWRkbGUiIGRvbWluYW50LWJhc2VsaW5lPSJtaWRkbGUiPuKYlTwvdGV4dD4KPC9zdmc+'} 
+                                alt={coffee2.name}
+                                className="w-32 h-32 object-cover rounded-lg mx-auto mb-3"
+                            />
+                            <h3 className="text-lg font-semibold">{coffee2.name}</h3>
+                            <p className="text-gray-600">{coffee2.brand}</p>
+                            <p className="text-sm text-gray-500">{coffee2.origin}</p>
+                        </div>
+                    </div>
+
+                    {/* Method Selection */}
+                    <div className="mt-6 mb-4">
+                        <label className="block text-sm font-medium mb-2">Compare Brew Method:</label>
+                        <select
+                            value={selectedMethod}
+                            onChange={(e) => setSelectedMethod(e.target.value)}
+                            className="w-full border rounded px-3 py-2"
+                        >
+                            {availableMethods.map(method => (
+                                <option key={method} value={method}>{method}</option>
+                            ))}
+                        </select>
+                    </div>
+
+                    {/* Ratings Comparison */}
+                    <div className="mt-6">
+                        <h4 className="text-lg font-semibold mb-4">Ratings Comparison - {selectedMethod}</h4>
+                        <div className="space-y-3">
+                            {RATING_CATEGORIES.map(category => {
+                                const rating1 = getMethodRatings(coffee1, selectedMethod);
+                                const rating2 = getMethodRatings(coffee2, selectedMethod);
+                                const value1 = rating1 ? rating1[category] || 0 : 0;
+                                const value2 = rating2 ? rating2[category] || 0 : 0;
+
+                                return (
+                                    <div key={category} className="grid grid-cols-4 gap-4 items-center">
+                                        <div className="text-sm font-medium capitalize">{category}</div>
+                                        <div className="text-center">
+                                            <div className={`font-bold ${value1 > value2 ? 'text-green-600' : value1 < value2 ? 'text-red-600' : ''}`}>
+                                                {value1}/10
+                                            </div>
+                                            {!rating1 && <span className="text-xs text-gray-500">No data</span>}
+                                        </div>
+                                        <div className="relative">
+                                            <div className="absolute inset-0 flex items-center">
+                                                <div className="w-full h-2 bg-gray-200 rounded">
+                                                    <div 
+                                                        className="h-full bg-amber-600 rounded"
+                                                        style={{width: `${(Math.abs(value1 - value2) / 10) * 100}%`}}
+                                                    />
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <div className="text-center">
+                                            <div className={`font-bold ${value2 > value1 ? 'text-green-600' : value2 < value1 ? 'text-red-600' : ''}`}>
+                                                {value2}/10
+                                            </div>
+                                            {!rating2 && <span className="text-xs text-gray-500">No data</span>}
+                                        </div>
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    </div>
+
+                    {/* Details Comparison */}
+                    <div className="mt-6 grid grid-cols-2 gap-6">
+                        <div>
+                            <h4 className="font-semibold mb-2">Details - {coffee1.name}</h4>
+                            <div className="text-sm space-y-1">
+                                <p><span className="font-medium">Roast:</span> {coffee1.roastLevel}</p>
+                                <p><span className="font-medium">Roasting Date:</span> {coffee1.roastingDate || 'N/A'}</p>
+                                <p><span className="font-medium">Grinding Level:</span> {coffee1.grindingLevel || 'N/A'}</p>
+                                <p><span className="font-medium">Price:</span> {coffee1.price || 'N/A'}</p>
+                            </div>
+                        </div>
+                        <div>
+                            <h4 className="font-semibold mb-2">Details - {coffee2.name}</h4>
+                            <div className="text-sm space-y-1">
+                                <p><span className="font-medium">Roast:</span> {coffee2.roastLevel}</p>
+                                <p><span className="font-medium">Roasting Date:</span> {coffee2.roastingDate || 'N/A'}</p>
+                                <p><span className="font-medium">Grinding Level:</span> {coffee2.grindingLevel || 'N/A'}</p>
+                                <p><span className="font-medium">Price:</span> {coffee2.price || 'N/A'}</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            );
+        }
+
+        // Render the app
+        ReactDOM.render(<CoffeeTrackerApp />, document.getElementById('root'));
+    </script>
+</body>
+</html>
