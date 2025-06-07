@@ -194,36 +194,39 @@
 
                     const loadCommunityData = async () => {
                         try {
-                            const [coffeesSnapshot, usersSnapshot] = await Promise.all([
-                                publicCoffeesRef.once('value'),
-                                usersRef.once('value')
-                            ]);
-
-                            const coffeesData = coffeesSnapshot.val() || {};
+                            // First, get all users' profile data
+                            const usersSnapshot = await database.ref('users').once('value');
                             const usersData = usersSnapshot.val() || {};
-
-                            // Extract user names
+                            
                             const userNames = {};
                             Object.entries(usersData).forEach(([uid, userData]) => {
-                                if (userData.profile) {
+                                if (userData && userData.profile) {
                                     userNames[uid] = userData.profile.displayName || 'Anonymous';
                                 }
                             });
 
-                            // Format coffee data
-                            const formattedCoffees = [];
-                            Object.entries(coffeesData).forEach(([coffeeId, coffee]) => {
-                                if (coffee && !coffee.isPrivate) {
-                                    formattedCoffees.push({
-                                        id: coffeeId,
-                                        ...coffee,
-                                        ownerName: userNames[coffee.ownerId] || 'Anonymous'
+                            // Then get all public coffees from all users
+                            const allPublicCoffees = [];
+                            
+                            // Iterate through each user's coffees
+                            for (const [uid, userData] of Object.entries(usersData)) {
+                                if (userData && userData.coffees) {
+                                    Object.entries(userData.coffees).forEach(([coffeeId, coffee]) => {
+                                        // Include coffee if it's not explicitly marked as private
+                                        if (coffee && !coffee.isPrivate) {
+                                            allPublicCoffees.push({
+                                                id: coffeeId,
+                                                ...coffee,
+                                                ownerId: uid,
+                                                ownerName: userNames[uid] || 'Anonymous'
+                                            });
+                                        }
                                     });
                                 }
-                            });
+                            }
 
                             setCommunityData({
-                                coffees: formattedCoffees,
+                                coffees: allPublicCoffees,
                                 users: userNames
                             });
                         } catch (error) {
@@ -233,10 +236,11 @@
 
                     loadCommunityData();
 
-                    // Listen for updates
-                    publicCoffeesRef.on('value', loadCommunityData);
+                    // Set up listener for changes
+                    const usersRef = database.ref('users');
+                    usersRef.on('value', loadCommunityData);
 
-                    return () => publicCoffeesRef.off();
+                    return () => usersRef.off('value', loadCommunityData);
                 }
             }, [currentView]);
 
@@ -271,7 +275,6 @@
                 if (window.confirm('Are you sure you want to delete this coffee?')) {
                     try {
                         await database.ref(`users/${user.uid}/coffees/${coffeeId}`).remove();
-                        await database.ref(`publicCoffees/${coffeeId}`).remove();
                     } catch (error) {
                         console.error("Error deleting coffee:", error);
                         alert("Failed to delete coffee");
@@ -623,7 +626,8 @@
                 }
                 
                 setLikes(newLikes);
-                await database.ref(`publicCoffees/${coffee.id}/likes`).set(newLikes);
+                // Save to the user's coffee data, not publicCoffees
+                await database.ref(`users/${coffee.ownerId}/coffees/${coffee.id}/likes`).set(newLikes);
             };
 
             const handleComment = async () => {
@@ -642,14 +646,16 @@
                 
                 setComments(newComments);
                 setNewComment('');
-                await database.ref(`publicCoffees/${coffee.id}/comments`).set(newComments);
+                // Save to the user's coffee data, not publicCoffees
+                await database.ref(`users/${coffee.ownerId}/coffees/${coffee.id}/comments`).set(newComments);
             };
 
             const handleDeleteComment = async (commentId) => {
                 const newComments = { ...comments };
                 delete newComments[commentId];
                 setComments(newComments);
-                await database.ref(`publicCoffees/${coffee.id}/comments`).set(newComments);
+                // Delete from the user's coffee data, not publicCoffees
+                await database.ref(`users/${coffee.ownerId}/coffees/${coffee.id}/comments`).set(newComments);
             };
 
             const isLiked = likes[currentUser.uid];
@@ -1094,25 +1100,9 @@
                     if (coffee) {
                         // Update existing coffee
                         await database.ref(`users/${user.uid}/coffees/${coffee.id}`).set(coffeeData);
-                        
-                        // Update public coffee if not private
-                        if (!coffeeData.isPrivate) {
-                            await database.ref(`publicCoffees/${coffee.id}`).set(coffeeData);
-                        } else {
-                            // Remove from public if made private
-                            await database.ref(`publicCoffees/${coffee.id}`).remove();
-                        }
                     } else {
                         // Add new coffee
-                        const newCoffeeRef = await database.ref(`users/${user.uid}/coffees`).push(coffeeData);
-                        
-                        // Add to public coffees if not private
-                        if (!coffeeData.isPrivate) {
-                            await database.ref(`publicCoffees/${newCoffeeRef.key}`).set({
-                                ...coffeeData,
-                                id: newCoffeeRef.key
-                            });
-                        }
+                        await database.ref(`users/${user.uid}/coffees`).push(coffeeData);
                     }
                     onClose();
                 } catch (error) {
