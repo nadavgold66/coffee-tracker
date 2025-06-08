@@ -483,6 +483,13 @@
                                                         <span>{ratings[cat] || 0}/10</span>
                                                     </div>
                                                 ))}
+                                                {/* Show grinding level if it exists */}
+                                                {ratings.grindingLevel !== undefined && (
+                                                    <div className="flex justify-between">
+                                                        <span>Grinding Level:</span>
+                                                        <span>{ratings.grindingLevel}</span>
+                                                    </div>
+                                                )}
                                                 {ratings.brewNotes && (
                                                     <div className="mt-2 pt-2 border-t">
                                                         <p className="text-xs text-gray-600">Notes: {ratings.brewNotes}</p>
@@ -524,7 +531,7 @@
             );
         }
 
-        // Coffee Form Component - FIXED VERSION
+        // Coffee Form Component - UPDATED VERSION
         function CoffeeForm({ user, coffee, onClose }) {
             const [formData, setFormData] = useState({
                 name: '',
@@ -532,7 +539,7 @@
                 origin: '',
                 roastLevel: 'Medium',
                 roastingDate: '',
-                grindingLevel: '',
+                grindingLevel: '', // Keep this for backward compatibility display
                 price: '',
                 priceType: 'perKg',
                 cupPrice: '',
@@ -552,6 +559,7 @@
                 body: 5,
                 aftertaste: 5,
                 strength: 5,
+                grindingLevel: '', // Add grinding level to ratings
                 brewNotes: ''
             });
             const [uploading, setUploading] = useState(false);
@@ -593,6 +601,7 @@
                         body: 5,
                         aftertaste: 5,
                         strength: 5,
+                        grindingLevel: '',
                         brewNotes: ''
                     });
                 }
@@ -615,7 +624,7 @@
                 try {
                     const coffeeData = {
                         ...formData,
-                        userId: user.uid,  // THIS IS THE KEY FIX - ensuring userId is in the data
+                        userId: user.uid,
                         userName: user.displayName,
                         userPhoto: user.photoURL,
                         dateAdded: coffee ? formData.dateAdded : Date.now(),
@@ -724,39 +733,18 @@
                                             className="w-full border rounded px-3 py-2"
                                         />
                                     </div>
-                                    <div>
-                                        <label className="block text-sm font-medium mb-1">Roast Level</label>
-                                        <select
-                                            value={formData.roastLevel}
-                                            onChange={(e) => setFormData({...formData, roastLevel: e.target.value})}
-                                            className="w-full border rounded px-3 py-2"
-                                        >
-                                            {ROAST_LEVELS.map(level => (
-                                                <option key={level} value={level}>{level}</option>
-                                            ))}
-                                        </select>
-                                    </div>
-                                    <div>
-                                        <label className="block text-sm font-medium mb-1">Roasting Date</label>
-                                        <input
-                                            type="date"
-                                            value={formData.roastingDate}
-                                            onChange={(e) => setFormData({...formData, roastingDate: e.target.value})}
-                                            className="w-full border rounded px-3 py-2"
-                                        />
-                                    </div>
-                                    <div>
-                                        <label className="block text-sm font-medium mb-1">Grinding Level</label>
-                                        <input
-                                            type="number"
-                                            value={formData.grindingLevel}
-                                            onChange={(e) => setFormData({...formData, grindingLevel: e.target.value})}
-                                            className="w-full border rounded px-3 py-2"
-                                            placeholder="Enter grinding level"
-                                            step="0.1"
-                                        />
-                                    </div>
                                 </div>
+
+                                {/* Show old grinding level if exists (for backward compatibility) */}
+                                {formData.grindingLevel && (
+                                    <div className="mb-4 bg-yellow-50 p-3 rounded">
+                                        <p className="text-sm text-gray-600">
+                                            <span className="font-medium">Legacy Grinding Level:</span> {formData.grindingLevel}
+                                            <br />
+                                            <span className="text-xs">This will be preserved but you can now set grinding levels per brew method below.</span>
+                                        </p>
+                                    </div>
+                                )}
 
                                 {/* Price Options */}
                                 <div className="mb-4 bg-gray-50 p-4 rounded">
@@ -865,6 +853,12 @@
                                                     </div>
                                                 ))}
                                             </div>
+                                            {ratings.grindingLevel && (
+                                                <div className="text-sm mt-1">
+                                                    <span>Grinding Level: </span>
+                                                    <span className="font-medium">{ratings.grindingLevel}</span>
+                                                </div>
+                                            )}
                                             {ratings.brewNotes && (
                                                 <div className="mt-2 pt-2 border-t">
                                                     <p className="text-sm text-gray-600">Notes: {ratings.brewNotes}</p>
@@ -908,6 +902,22 @@
                                                 />
                                             </div>
                                         ))}
+                                        
+                                        {/* Grinding Level for this method */}
+                                        <div className="mb-3">
+                                            <label className="block text-sm font-medium mb-1">Grinding Level</label>
+                                            <input
+                                                type="number"
+                                                value={currentRatings.grindingLevel}
+                                                onChange={(e) => setCurrentRatings({
+                                                    ...currentRatings,
+                                                    grindingLevel: e.target.value
+                                                })}
+                                                className="w-full border rounded px-3 py-2"
+                                                placeholder="Enter grinding level for this method"
+                                                step="0.1"
+                                            />
+                                        </div>
                                         
                                         {/* Brew Notes */}
                                         <div className="mb-3">
@@ -993,7 +1003,7 @@
                                         allCoffees.push({
                                             ...coffee,
                                             id: coffeeId,
-                                            userId: coffee.userId || userId  // Use the userId from the coffee data if available, otherwise use the path userId
+                                            userId: coffee.userId || userId
                                         });
                                         uniqueUsers.set(coffee.userId || userId, {
                                             id: coffee.userId || userId,
@@ -1315,6 +1325,13 @@
                                                         </div>
                                                     ))}
                                                 </div>
+                                                {ratings.grindingLevel && (
+                                                    <div className="mt-2 pt-2 border-t">
+                                                        <p className="text-sm">
+                                                            <span className="font-medium">Grinding Level:</span> {ratings.grindingLevel}
+                                                        </p>
+                                                    </div>
+                                                )}
                                                 {ratings.brewNotes && (
                                                     <div className="mt-3 pt-3 border-t">
                                                         <p className="text-sm font-medium mb-1">Brewing Notes:</p>
@@ -1444,7 +1461,7 @@
             );
         }
 
-        // Compare View Component (unchanged from original)
+        // Compare View Component
         function CompareView({ coffee1, coffee2, onClose }) {
             const [selectedMethod, setSelectedMethod] = useState('French Press');
 
@@ -1549,6 +1566,25 @@
                                     </div>
                                 );
                             })}
+                            
+                            {/* Grinding Level Comparison */}
+                            {(getMethodRatings(coffee1, selectedMethod)?.grindingLevel || 
+                              getMethodRatings(coffee2, selectedMethod)?.grindingLevel) && (
+                                <div className="grid grid-cols-4 gap-4 items-center mt-4 pt-4 border-t">
+                                    <div className="text-sm font-medium">Grinding Level</div>
+                                    <div className="text-center">
+                                        <div className="font-bold">
+                                            {getMethodRatings(coffee1, selectedMethod)?.grindingLevel || 'N/A'}
+                                        </div>
+                                    </div>
+                                    <div></div>
+                                    <div className="text-center">
+                                        <div className="font-bold">
+                                            {getMethodRatings(coffee2, selectedMethod)?.grindingLevel || 'N/A'}
+                                        </div>
+                                    </div>
+                                </div>
+                            )}
                         </div>
                         
                         {/* Brew Notes Comparison */}
@@ -1575,7 +1611,9 @@
                             <div className="text-sm space-y-1">
                                 <p><span className="font-medium">Roast:</span> {coffee1.roastLevel}</p>
                                 <p><span className="font-medium">Roasting Date:</span> {coffee1.roastingDate || 'N/A'}</p>
-                                <p><span className="font-medium">Grinding Level:</span> {coffee1.grindingLevel || 'N/A'}</p>
+                                {coffee1.grindingLevel && (
+                                    <p><span className="font-medium">Legacy Grinding Level:</span> {coffee1.grindingLevel}</p>
+                                )}
                                 <p><span className="font-medium">Price:</span> {
                                     coffee1.priceType === 'perCup' 
                                         ? `${coffee1.cupPrice}/cup` 
@@ -1588,7 +1626,9 @@
                             <div className="text-sm space-y-1">
                                 <p><span className="font-medium">Roast:</span> {coffee2.roastLevel}</p>
                                 <p><span className="font-medium">Roasting Date:</span> {coffee2.roastingDate || 'N/A'}</p>
-                                <p><span className="font-medium">Grinding Level:</span> {coffee2.grindingLevel || 'N/A'}</p>
+                                {coffee2.grindingLevel && (
+                                    <p><span className="font-medium">Legacy Grinding Level:</span> {coffee2.grindingLevel}</p>
+                                )}
                                 <p><span className="font-medium">Price:</span> {
                                     coffee2.priceType === 'perCup' 
                                         ? `${coffee2.cupPrice}/cup` 
@@ -1606,3 +1646,24 @@
     </script>
 </body>
 </html>
+                                    </div>
+                                    <div>
+                                        <label className="block text-sm font-medium mb-1">Roast Level</label>
+                                        <select
+                                            value={formData.roastLevel}
+                                            onChange={(e) => setFormData({...formData, roastLevel: e.target.value})}
+                                            className="w-full border rounded px-3 py-2"
+                                        >
+                                            {ROAST_LEVELS.map(level => (
+                                                <option key={level} value={level}>{level}</option>
+                                            ))}
+                                        </select>
+                                    </div>
+                                    <div>
+                                        <label className="block text-sm font-medium mb-1">Roasting Date</label>
+                                        <input
+                                            type="date"
+                                            value={formData.roastingDate}
+                                            onChange={(e) => setFormData({...formData, roastingDate: e.target.value})}
+                                            className="w-full border rounded px-3 py-2"
+                                        />
