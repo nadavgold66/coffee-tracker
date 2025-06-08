@@ -524,7 +524,7 @@
             );
         }
 
-        // Coffee Form Component
+        // Coffee Form Component - FIXED VERSION
         function CoffeeForm({ user, coffee, onClose }) {
             const [formData, setFormData] = useState({
                 name: '',
@@ -615,12 +615,15 @@
                 try {
                     const coffeeData = {
                         ...formData,
-                        userId: user.uid,
+                        userId: user.uid,  // THIS IS THE KEY FIX - ensuring userId is in the data
                         userName: user.displayName,
                         userPhoto: user.photoURL,
                         dateAdded: coffee ? formData.dateAdded : Date.now(),
                         lastModified: Date.now()
                     };
+
+                    // Remove the id from the data object before saving
+                    delete coffeeData.id;
 
                     if (coffee) {
                         // Update existing coffee
@@ -981,7 +984,7 @@
                     const data = snapshot.val();
                     if (data) {
                         const allCoffees = [];
-                        const uniqueUsers = new Set();
+                        const uniqueUsers = new Map();
                         
                         Object.entries(data).forEach(([userId, userData]) => {
                             if (userData.coffees) {
@@ -990,10 +993,10 @@
                                         allCoffees.push({
                                             ...coffee,
                                             id: coffeeId,
-                                            userId: userId
+                                            userId: coffee.userId || userId  // Use the userId from the coffee data if available, otherwise use the path userId
                                         });
-                                        uniqueUsers.add({
-                                            id: userId,
+                                        uniqueUsers.set(coffee.userId || userId, {
+                                            id: coffee.userId || userId,
                                             name: coffee.userName || 'Unknown User'
                                         });
                                     }
@@ -1002,7 +1005,7 @@
                         });
                         
                         setCoffees(allCoffees);
-                        setUsers(Array.from(uniqueUsers));
+                        setUsers(Array.from(uniqueUsers.values()));
                         setLoading(false);
                     } else {
                         setCoffees([]);
