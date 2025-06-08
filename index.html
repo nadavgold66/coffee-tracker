@@ -733,6 +733,27 @@
                                             className="w-full border rounded px-3 py-2"
                                         />
                                     </div>
+                                    <div>
+                                        <label className="block text-sm font-medium mb-1">Roast Level</label>
+                                        <select
+                                            value={formData.roastLevel}
+                                            onChange={(e) => setFormData({...formData, roastLevel: e.target.value})}
+                                            className="w-full border rounded px-3 py-2"
+                                        >
+                                            {ROAST_LEVELS.map(level => (
+                                                <option key={level} value={level}>{level}</option>
+                                            ))}
+                                        </select>
+                                    </div>
+                                    <div>
+                                        <label className="block text-sm font-medium mb-1">Roasting Date</label>
+                                        <input
+                                            type="date"
+                                            value={formData.roastingDate}
+                                            onChange={(e) => setFormData({...formData, roastingDate: e.target.value})}
+                                            className="w-full border rounded px-3 py-2"
+                                        />
+                                    </div>
                                 </div>
 
                                 {/* Show old grinding level if exists (for backward compatibility) */}
@@ -1646,24 +1667,3 @@
     </script>
 </body>
 </html>
-                                    </div>
-                                    <div>
-                                        <label className="block text-sm font-medium mb-1">Roast Level</label>
-                                        <select
-                                            value={formData.roastLevel}
-                                            onChange={(e) => setFormData({...formData, roastLevel: e.target.value})}
-                                            className="w-full border rounded px-3 py-2"
-                                        >
-                                            {ROAST_LEVELS.map(level => (
-                                                <option key={level} value={level}>{level}</option>
-                                            ))}
-                                        </select>
-                                    </div>
-                                    <div>
-                                        <label className="block text-sm font-medium mb-1">Roasting Date</label>
-                                        <input
-                                            type="date"
-                                            value={formData.roastingDate}
-                                            onChange={(e) => setFormData({...formData, roastingDate: e.target.value})}
-                                            className="w-full border rounded px-3 py-2"
-                                        />
